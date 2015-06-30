@@ -23,8 +23,10 @@ import           Prelude                   hiding (length, reverse)
 main :: IO ()
 main = do
   config <- O.execParser helpParser
-  -- TODO calculate SVG dims from output dims
-  renderSVG (filename config) (dims $ mkR2 400 400) (boxenPieces config # pad 1.02)
+  renderSized (filename config) $ boxenPieces config # pad 1.02
+
+renderSized :: FilePath -> Diagram SVG -> IO ()
+renderSized fp d = renderSVG fp (dims . boxExtents . boundingBox . scale pxPerInch $ d) d
 
 data Config = Config
               { filename     :: FilePath
@@ -77,15 +79,12 @@ boxenPieces config = vcat [ side
                           , side # reverse
                           , strutY space
                           , top
-                          ] # centerXY where
+                          ] # lw (0.072 * pure pxPerInch) # centerXY where
   -- side where
   middleRow, side, end, top :: Diagram SVG
   middleRow = hcat [end, strutX space, base, strutX space, end # reverse]
   ns = notchCalc config
-  -- end = centerXY $ (centerY . alignL . strokeTrail) t <> posHandle where
-  --   t = depthNotches <> heightNotches <> reverse depthNotches <> heightStraight
   space = margin config
-  --   posHandle = translate space . centerY . alignL . rotateBy (-0.25) $ handle
   end = centerXY . strokeTrail . mconcat $
         [ notchTrail (nWidth ns) yDir, notchTrail (nHeight ns) xDir
         , notchTrail (nWidth ns) _yDir, notchTrail (nHeight ns) _xDir ]
@@ -212,3 +211,6 @@ instance Semigroup (O.Mod f a) where
 
 instance Semigroup (O.InfoMod a) where
   (<>) = mappend
+
+pxPerInch :: Double
+pxPerInch = 90  -- empirically in Inkscape, though from the Spec I'd expect 96
