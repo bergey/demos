@@ -30,6 +30,7 @@ data Config = Config
               , fingerLength :: Maybe Double
               , clearance    :: Double
               , margin       :: Double
+              , hasFeet      :: Bool
               }
 
 cliParser :: O.Parser Config
@@ -48,14 +49,14 @@ cliParser = Config
             <*> O.option (Just <$> O.auto) (O.value Nothing <> O.long "notches" <> O.short 'n'
                               <> O.help "The number of notch pairs in each direction")
             <*> O.option (Just <$> O.auto) ( O.value Nothing
-                                           <> O.long "finger" <> O.short 'f'
+                                           <> O.long "finger" <> O.short 'x'
                                            <> O.help "target length of each finger")
             <*> O.option O.auto (O.value 0 <> O.long "clearance" <> O.short 'c'
                                  <> O.help "extra clearance in joints" <> O.showDefault)
             <*> O.option O.auto (O.value 1 <> O.long "margin" <> O.short 'm'
                                  <> O.showDefault
                                  <> O.help "space between seperate pieces to be cut.  You likely want to rearrange the pieces anyway, to better fit the raw material.")
-            -- <*> pure Nothing <*> pure Nothing <*> pure 0 <*> pure 1
+            <*> O.switch (O.long "feet" <> O.short 'f' <> O.help "add two feet to help align & stack boxes")
 
 helpParser :: O.ParserInfo Config
 helpParser = O.info (O.helper <*> cliParser)
@@ -71,6 +72,8 @@ boxenPieces config = vcat [ side
                           , side # reverse
                           , strutY space
                           , top
+                          , strutY space
+                          , feet
                           ] # lw (0.072 * pure pxPerInch) # centerXY where
   -- side where
   middleRow, side, end, top :: Diagram SVG
@@ -85,10 +88,38 @@ boxenPieces config = vcat [ side
     t = mconcat [notchTrail (nLength ns) xDir , notchTrail (nHeight ns) yDir
                 , notchTrail (nLength ns) _xDir, notchTrail (nHeight ns) _yDir ]
 
-  base = centerXY . strokeTrail . mconcat $
+  base = outline <> feet
+    where
+      outline = centerXY . strokeTrail . mconcat $
                 [ notchTrail (nLength ns) xDir, notchTrail (nWidth ns) yDir
                 , notchTrail (nLength ns) _xDir, notchTrail (nWidth ns) _yDir ]
+      feet = if hasFeet config
+             then centerXY $ atPoints (mkP2 <$> [0, x] <*> [0,y]) (repeat mortise)
+             else mempty
+      mortise = square $ thickness config + clearance config
+      y = footLength / 2
+      x = (length config - 4 * thickness config)
   top = centerXY $ rect (length config) (width config)
+  feet = if hasFeet config
+         then centerXY (foot === foot)
+         else mempty
+    where
+      foot = strokeTrail . closeTrail $ fromOffsets
+            [ unit_X ^* footLength
+            , unit_Y ^* t
+            , unitX ^* x
+            ] <> tenon
+            <> fromOffsets [ unitX ^* (2 * x) ]
+            <> tenon
+            <> fromOffsets [ unitX ^* x]
+      tenon = fromOffsets
+              [ unit_Y ^* t
+              , unitX ^* t
+              , unitY ^* t
+              ]
+      t = thickness config
+      x = footLength / 4 - t / 2
+  footLength = width config - 3 * thickness config
 
 notch :: (Vn t ~ V2 Double, TrailLike t) => Config -> t
 notch config = fromOffsets [ -l *^ unitY
