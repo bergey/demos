@@ -11,9 +11,10 @@ xy = direction . r3 $ (-1, -1, -0.5)
 
 light = parallelLight xy white
 
-s = sphere # scaleY 1.6 # translateX 6
+s = skin sphere # scaleY 1.6 # translateX 6
 
-color theta = fc $ rybColor (floor $ theta * 24)
+color :: Double -> Diagram POVRay -> Diagram POVRay
+color theta = sc $ rybColor (floor $ theta * 24)
 
 example :: Diagram POVRay
 example = mconcat
