@@ -5,6 +5,8 @@
 
 module Main where
 
+import qualified Debug.Trace               as T
+
 import           Diagrams.Backend.SVG
 import           Diagrams.Prelude          hiding (end, height, width)
 -- import qualified Diagrams.TwoD.Path.Metafont as MF
@@ -22,37 +24,45 @@ renderSized fp d = renderSVG fp (dims . boxExtents . boundingBox . scale pxPerIn
 
 data Config = Config
               { filename     :: FilePath
-              , width        :: Double
               , length       :: Double
+              , width        :: Double
               , height       :: Double
               , thickness    :: Double
               , notches      :: Maybe (Int, Int, Int)
               , fingerLength :: Maybe Double
               , clearance    :: Double
+              , relief       :: Double
               , margin       :: Double
               , hasFeet      :: Bool
               }
+
+-- | Bottom can be joined to sides by finger joints (like the vertical
+-- edges) or the bottom can be rabbeted and fit to a dado in the
+-- sides.
+data BottomStyle = Finger | Rabbet
 
 cliParser :: O.Parser Config
 cliParser = Config
             <$> O.strOption (O.value "fingerjointed-box.svg" <> O.long "output"
                              <> O.short 'o' <> O.help "filename for output"
                             <> O.showDefault )
-            <*> O.option O.auto (O.long "width" <> O.short 'w'
-                               <> O.help "width of box")
-            <*> O.option O.auto (O.long "length" <> O.short 'l'
+            <*> O.option O.auto (O.long "length" <> O.short 'L'
                                <> O.help "length of box")
-            <*> O.option O.auto (O.long "height" <> O.short 'h'
+            <*> O.option O.auto (O.long "width" <> O.short 'W'
+                               <> O.help "width of box")
+            <*> O.option O.auto (O.long "height" <> O.short 'H'
                                <> O.help "height of box")
-            <*> O.option O.auto (O.long "thickness" <> O.short 't'
+            <*> O.option O.auto (O.long "thickness" <> O.short 'T'
                                <> O.help "thickness of material / depth of notches")
             <*> O.option (Just <$> O.auto) (O.value Nothing <> O.long "notches" <> O.short 'n'
-                              <> O.help "The number of notch pairs in each direction")
+                              <> O.help "The number of notch pairs in each direction (length, width, height)")
             <*> O.option (Just <$> O.auto) ( O.value Nothing
                                            <> O.long "finger" <> O.short 'x'
                                            <> O.help "target length of each finger")
             <*> O.option O.auto (O.value 0 <> O.long "clearance" <> O.short 'c'
                                  <> O.help "extra clearance in joints" <> O.showDefault)
+               <*> O.option O.auto (O.value 0 <> O.long "relief" <> O.short 'R'
+                                    <> O.help "Cut diagonally in the inside corners, so the square outside corners can fit.  The argument is the diameter of the cutting bit.  Generally this is needed when cutting on a CNC router, but not when laser cutting.")
             <*> O.option O.auto (O.value 1 <> O.long "margin" <> O.short 'm'
                                  <> O.showDefault
                                  <> O.help "space between seperate pieces to be cut.  You likely want to rearrange the pieces anyway, to better fit the raw material.")
@@ -121,15 +131,6 @@ boxenPieces config = vcat [ side
       x = footLength / 4 - t / 2
   footLength = width config - 3 * thickness config
 
-notch :: (Vn t ~ V2 Double, TrailLike t) => Config -> t
-notch config = fromOffsets [ -l *^ unitY
-                        , t *^ unitX
-                        , l *^ unitY
-                        , t *^ unitX
-                        ] where
-  l = length config
-  t = thickness config
-
 -- a cut-through handle
 -- handle :: Diagram SVG R2
 -- handle = either (error.show) id $
@@ -152,28 +153,36 @@ data Notches = Notches
 notchCalc :: Config -> Notches
 notchCalc config = case notches config of
   Nothing -> Notches (fit length) (fit width) (fit height) where
-    fit dim = Joint (dim config / fromIntegral n / 2) (thickness config) n where
+    fit dim = Joint (dim config / fromIntegral n / 2) (thickness config) n (relief config) where
       n = round $ dim config / l
     l = case fingerLength config of
       Nothing -> minimum [length config, width config, height config] / 2
       Just l' -> l'
   Just (nl, nw, nh) -> Notches (fit length nl) (fit width nw) (fit height nh)
     where
-      fit dim n = Joint (dim config / fromIntegral n / 2) (thickness config) n
+      fit dim n = Joint (dim config / fromIntegral n / 2) (thickness config) n (relief config)
 
 data Joint = Joint
              { forward :: Double
              , depth   :: Double
              , count   :: Int
+             , jRelief :: Double
              } deriving (Show, Read)
 
 notchPair :: (TrailLike t, Vn t ~ V2 Double) => Joint -> Direction V2 Double -> t
-notchPair joint dir = fromOffsets
-                  [ forward joint *^ fromDirection dir
-                  , depth joint *^ rotateBy 0.25 (fromDirection dir)
-                  , forward joint *^ fromDirection dir
-                  , depth joint *^ rotateBy 0.75 (fromDirection dir)
-                  ]
+notchPair joint dir = T.trace (show joint) fromOffsets $ mconcat
+                  [ [ forward joint *^ u
+                    , depth joint *^ rotateBy 0.25 u]
+                  , cornerRelief
+                  , [ forward joint *^ u ]
+                  , rotateBy 0.75 cornerRelief
+                  , [ depth joint *^ rotateBy 0.75 u ]
+                  ] where
+                    u = fromDirection dir
+                    jog = (jRelief joint * 0.5 * (sqrt 2 - 1)) *^ rotateBy 0.375 u
+                    cornerRelief = if jRelief joint > 0
+                                   then [ T.trace (show jog) jog, rotateBy 0.5 jog ]
+                                   else []
 
 -- | Direction is not part of Joint because the direction is in 2D,
 -- according to how the panel is drawn, not the 3D orientation of the
