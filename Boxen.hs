@@ -89,21 +89,22 @@ boxenPieces config = vcat [ side
   -- side where
   middleRow, side, end, top :: Diagram SVG
   middleRow = hcat [end, strutX space, base, strutX space, end # reverse]
-  ns = notchCalc config
+  Notches {nWidth, nLength, nHeight} = notchCalc config
   space = margin config
+
   end = centerXY . strokeTrail . mconcat $
-        [ notchTrail (nWidth ns) yDir, notchTrail (nHeight ns) xDir
-        , notchTrail (nWidth ns) _yDir, notchTrail (nHeight ns) _xDir ]
+        [ notchTrail (nWidth) yDir, notchTrail nHeight xDir
+        , notchTrail (nWidth) _yDir, notchTrail nHeight _xDir ]
 
   side = centerXY . strokeTrail $ t where
-    t = mconcat [notchTrail (nLength ns) xDir , notchTrail (nHeight ns) yDir
-                , notchTrail (nLength ns) _xDir, notchTrail (nHeight ns) _yDir ]
+    t = mconcat [notchTrail nLength xDir , notchTrail nHeight yDir
+                , notchTrail nLength _xDir, notchTrail nHeight _yDir ]
 
   base = outline <> feet
     where
       outline = centerXY . strokeTrail . mconcat $
-                [ notchTrail (nLength ns) xDir, notchTrail (nWidth ns) yDir
-                , notchTrail (nLength ns) _xDir, notchTrail (nWidth ns) _yDir ]
+                [ notchTrail nLength xDir, notchTrail (nWidth) yDir
+                , notchTrail nLength _xDir, notchTrail nWidth _yDir ]
       feet = if hasFeet config
              then centerXY $ atPoints (mkP2 <$> [0, x] <*> [0,y]) (repeat mortise)
              else mempty
