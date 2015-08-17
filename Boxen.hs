@@ -31,7 +31,6 @@ data Config = Config
               , thickness    :: Double
               , notches      :: Maybe (Int, Int, Int)
               , fingerLength :: Maybe Double
-              , clearance    :: Double
               , relief       :: Double
               , margin       :: Double
               , hasFeet      :: Bool
@@ -62,8 +61,6 @@ cliParser = Config
             <*> O.option (Just <$> O.auto) ( O.value Nothing
                                            <> O.long "finger" <> O.short 'x'
                                            <> O.help "target length of each finger")
-            <*> O.option O.auto (O.value 0 <> O.long "clearance" <> O.short 'c'
-                                 <> O.help "extra clearance in joints" <> O.showDefault)
                <*> O.option O.auto (O.value 0 <> O.long "relief" <> O.short 'R'
                                     <> O.help "Cut diagonally in the inside corners, so the square outside corners can fit.  The argument is the diameter of the cutting bit.  Generally this is needed when cutting on a CNC router, but not when laser cutting.")
             <*> O.option O.auto (O.value 1 <> O.long "margin" <> O.short 'm'
@@ -145,7 +142,7 @@ boxenPieces config@(Config { width, length, height, thickness }) = vcat [ side
       feet = if hasFeet config
              then centerXY $ atPoints (mkP2 <$> [0, x] <*> [0,y]) (repeat mortise)
              else mempty
-      mortise = square $ thickness + clearance config
+      mortise = square thickness
       y = footLength / 2
       x = (length - 4 * thickness)
 
