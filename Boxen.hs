@@ -95,25 +95,45 @@ boxenPieces config@(Config { width, length, height, thickness }) = vcat [ side
   Notches {nWidth, nLength, nHeight} = notchCalc config
   space = margin config
 
-  end = centerXY . strokeTrail . mconcat $
+  end = centerXY $ outline <> dado where
         -- CCW starting at RHS
-        [ notchTrail (nWidth) Notched yDir
-        , notchTrail nHeight Notched _xDir
-        , fromOffsets [ (width - thickness) *^ unit_Y ]
-        , notchTrail nHeight Straight xDir
-        ]
+        outline = strokeTrail $ mconcat
+                  [ case bottom config of
+                      Finger -> notchTrail (nWidth) Notched yDir
+                      Rabbet -> fromOffsets [ (width - thickness) *^ unitY ]
+                  , notchTrail nHeight sidePrior _xDir
+                  , fromOffsets [ (width - thickness) *^ unit_Y ]
+                  , notchTrail nHeight Straight xDir
+                  ]
+        dado = case bottom config of
+              Finger -> mempty
+              Rabbet -> rect (thickness * 0.55) (width - thickness)
+                        # lc red # alignBR # translateX (-0.5 * thickness)
 
   -- CCW starting at bottom
-  side = centerXY . strokeTrail $ t where
-    t = mconcat
-        [ notchTrail nLength Notched xDir
-        , notchTrail nHeight Notched yDir
-        , fromOffsets [ (length - thickness) *^ unit_X ]
-        , notchTrail nHeight Straight _yDir
-        ]
+  side = centerXY $ outline <> dado where
+    outline = strokeTrail $ mconcat
+              [ case bottom config of
+                  Finger -> notchTrail nLength Notched xDir
+                  Rabbet -> fromOffsets [ (length - thickness) *^ unitX ]
+              , notchTrail nHeight sidePrior yDir
+              , fromOffsets [ (length - thickness) *^ unit_X ]
+              , notchTrail nHeight Straight _yDir
+              ]
+    dado = case bottom config of
+              Finger -> mempty
+              Rabbet -> rect (length - thickness) (thickness * 0.55)
+                        # lc red # alignBL # translateY (0.5 * thickness)
 
-  base = outline <> feet
+  sidePrior = case bottom config of
+    Finger -> Notched
+    Rabbet -> Straight
+
+  base = outline <> feet <> rabbet
     where
+      rabbet = case bottom config of
+        Finger -> mempty
+        Rabbet -> lc red . centerXY $ rect (length - 2 * thickness) (width - 2 * thickness)
       outline = case bottom config of
         Finger -> centerXY . strokeTrail . mconcat $
                   [ notchTrail nLength Notched xDir
