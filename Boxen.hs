@@ -35,12 +35,14 @@ data Config = Config
               , relief       :: Double
               , margin       :: Double
               , hasFeet      :: Bool
+              , bottom       :: BottomStyle
               }
 
 -- | Bottom can be joined to sides by finger joints (like the vertical
 -- edges) or the bottom can be rabbeted and fit to a dado in the
 -- sides.
 data BottomStyle = Finger | Rabbet
+                 deriving (Read, Show, Eq)
 
 cliParser :: O.Parser Config
 cliParser = Config
@@ -68,6 +70,7 @@ cliParser = Config
                                  <> O.showDefault
                                  <> O.help "space between seperate pieces to be cut.  You likely want to rearrange the pieces anyway, to better fit the raw material.")
             <*> O.switch (O.long "feet" <> O.short 'f' <> O.help "add two feet to help align & stack boxes")
+            <*> O.option O.auto (O.value Finger <> O.long "bottom" <> O.short 'b' <> O.help "method of attaching box bottom to sides.  Can be Finger or Rabbet" <> O.showDefault)
 
 helpParser :: O.ParserInfo Config
 helpParser = O.info (O.helper <*> cliParser)
@@ -76,7 +79,7 @@ helpParser = O.info (O.helper <*> cliParser)
              <> O.progDesc "The --length, --width, --height, and --thickness arguments are required.  All others are optional.")
 
 boxenPieces :: Config -> Diagram SVG
-boxenPieces config = vcat [ side
+boxenPieces config@(Config { width, length, height, thickness }) = vcat [ side
                           , strutY space
                           , middleRow # centerXY
                           , strutY space
@@ -96,7 +99,7 @@ boxenPieces config = vcat [ side
         -- CCW starting at RHS
         [ notchTrail (nWidth) Notched yDir
         , notchTrail nHeight Notched _xDir
-        , fromOffsets [ (width config - thickness config) *^ unit_Y ]
+        , fromOffsets [ (width - thickness) *^ unit_Y ]
         , notchTrail nHeight Straight xDir
         ]
 
@@ -105,25 +108,28 @@ boxenPieces config = vcat [ side
     t = mconcat
         [ notchTrail nLength Notched xDir
         , notchTrail nHeight Notched yDir
-        , fromOffsets [ (length config - thickness config) *^ unit_X ]
+        , fromOffsets [ (length - thickness) *^ unit_X ]
         , notchTrail nHeight Straight _yDir
         ]
 
   base = outline <> feet
     where
-      outline = centerXY . strokeTrail . mconcat $
-                [ notchTrail nLength Notched xDir
-                , notchTrail nWidth  Notched yDir
-                , notchTrail nLength Notched _xDir
-                , notchTrail nWidth  Notched _yDir
-                ]
+      outline = case bottom config of
+        Finger -> centerXY . strokeTrail . mconcat $
+                  [ notchTrail nLength Notched xDir
+                  , notchTrail nWidth  Notched yDir
+                  , notchTrail nLength Notched _xDir
+                  , notchTrail nWidth  Notched _yDir
+                  ]
+        Rabbet -> centerXY $ rect (length  - thickness ) (width - thickness)
       feet = if hasFeet config
              then centerXY $ atPoints (mkP2 <$> [0, x] <*> [0,y]) (repeat mortise)
              else mempty
-      mortise = square $ thickness config + clearance config
+      mortise = square $ thickness + clearance config
       y = footLength / 2
-      x = (length config - 4 * thickness config)
-  top = centerXY $ rect (length config) (width config)
+      x = (length - 4 * thickness)
+
+  top = centerXY $ rect length width
   feet = if hasFeet config
          then centerXY (foot === foot)
          else mempty
@@ -141,9 +147,9 @@ boxenPieces config = vcat [ side
               , unitX ^* t
               , unitY ^* t
               ]
-      t = thickness config
+      t = thickness
       x = footLength / 4 - t / 2
-  footLength = width config - 3 * thickness config
+  footLength = width - 3 * thickness
 
 -- a cut-through handle
 -- handle :: Diagram SVG R2
