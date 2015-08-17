@@ -1,5 +1,6 @@
 {-# LANGUAGE FlexibleContexts  #-}
 {-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE NamedFieldPuns    #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TypeFamilies      #-}
 
@@ -169,25 +170,35 @@ data Joint = Joint
              , jRelief :: Double
              } deriving (Show, Read)
 
-notchPair :: (TrailLike t, Vn t ~ V2 Double) => Joint -> Direction V2 Double -> t
-notchPair joint dir = T.trace (show joint) fromOffsets $ mconcat
-                  [ [ forward joint *^ u
-                    , depth joint *^ rotateBy 0.25 u]
-                  , cornerRelief
-                  , [ forward joint *^ u ]
-                  , rotateBy 0.75 cornerRelief
-                  , [ depth joint *^ rotateBy 0.75 u ]
-                  ] where
-                    u = fromDirection dir
-                    jog = (jRelief joint * 0.5 * (sqrt 2 - 1)) *^ rotateBy 0.375 u
-                    cornerRelief = if jRelief joint > 0
-                                   then [ T.trace (show jog) jog, rotateBy 0.5 jog ]
-                                   else []
+notchPair :: (TrailLike t, Vn t ~ V2 Double, Transformable t, Monoid t) =>
+             Joint -> Direction V2 Double -> t
+notchPair joint@(Joint {forward, depth, jRelief }) dir =
+   T.trace (show joint) mconcat $
+   [ fromOffsets [ forward *^ u
+                 , (depth - chordLength) *^ rotateBy 0.25 u]
+   , cornerRelief
+   , fromOffsets [ (forward - 2 * chordLength) *^ u ]
+   , rotateBy 0.75 cornerRelief
+   , fromOffsets [ (depth - chordLength) *^ rotateBy 0.75 u ]
+   ] where
+     u = fromDirection dir
+         -- The relief cut is a semicircle; at the (ideal)
+         -- inner corner of the joint, the radius bisects
+         -- the right angle.
+     r = jRelief / 2
+     chordLength = if jRelief > 0 then r * sqrt 2 else 0
+     -- jog = (jRelief * 0.5 * (sqrt 2 - 1)) *^ rotateBy 0.375 u
+     cornerRelief = if jRelief > 0
+                    then scale r $ arc (rotateBy 0.625 dir) (-0.5 @@ turn)
+                    else mempty
+     --                then [ T.trace (show jog) jog, rotateBy 0.5 jog ]
+     --                else []
 
 -- | Direction is not part of Joint because the direction is in 2D,
 -- according to how the panel is drawn, not the 3D orientation of the
 -- assembled box.
-notchTrail :: (TrailLike t, Vn t ~ V2 Double, Monoid t) => Joint -> Direction V2 Double -> t
+notchTrail :: (TrailLike t, Vn t ~ V2 Double, Transformable t, Monoid t) =>
+              Joint -> Direction V2 Double -> t
 notchTrail joint dir = mconcat $ replicate (count joint) (notchPair joint dir)
 
 reverse :: (Transformable t, V t ~ V2, Floating (N t)) => t -> t
