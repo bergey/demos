@@ -2,3 +2,4 @@ cabal.sandbox.config
 *.png
 *.pov
 *~
+/Setup.hs

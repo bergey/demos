@@ -1,0 +1,3 @@
+* Small programs using Diagrams
+** boxen
+Parametric fingerjointed box patterns suitable for cutting on a laser cutter or CNC router.  The CLI program accepts quite a few parameters, including box dimensions, and saves an SVG file.
