@@ -93,18 +93,30 @@ boxenPieces config = vcat [ side
   space = margin config
 
   end = centerXY . strokeTrail . mconcat $
-        [ notchTrail (nWidth) yDir, notchTrail nHeight xDir
-        , notchTrail (nWidth) _yDir, notchTrail nHeight _xDir ]
+        -- CCW starting at RHS
+        [ notchTrail (nWidth) Notched yDir
+        , notchTrail nHeight Notched _xDir
+        , fromOffsets [ (width config - thickness config) *^ unit_Y ]
+        , notchTrail nHeight Straight xDir
+        ]
 
+  -- CCW starting at bottom
   side = centerXY . strokeTrail $ t where
-    t = mconcat [notchTrail nLength xDir , notchTrail nHeight yDir
-                , notchTrail nLength _xDir, notchTrail nHeight _yDir ]
+    t = mconcat
+        [ notchTrail nLength Notched xDir
+        , notchTrail nHeight Notched yDir
+        , fromOffsets [ (length config - thickness config) *^ unit_X ]
+        , notchTrail nHeight Straight _yDir
+        ]
 
   base = outline <> feet
     where
       outline = centerXY . strokeTrail . mconcat $
-                [ notchTrail nLength xDir, notchTrail (nWidth) yDir
-                , notchTrail nLength _xDir, notchTrail nWidth _yDir ]
+                [ notchTrail nLength Notched xDir
+                , notchTrail nWidth  Notched yDir
+                , notchTrail nLength Notched _xDir
+                , notchTrail nWidth  Notched _yDir
+                ]
       feet = if hasFeet config
              then centerXY $ atPoints (mkP2 <$> [0, x] <*> [0,y]) (repeat mortise)
              else mempty
@@ -164,23 +176,32 @@ notchCalc config = case notches config of
     where
       fit dim n = Joint (dim config / fromIntegral n / 2) (thickness config) n (relief config)
 
+data PriorEdge = Notched | Straight
+             deriving (Show, Read, Eq)
+
+data Corners = Corners
+               Bool -- ^ Adjust first segment for prior notch
+               Bool -- ^ Adjust last segment for adjacent edge
+             deriving (Show, Read, Eq)
+
 data Joint = Joint
-             { forward :: Double
+             { forward :: Double  -- length per finger
              , depth   :: Double
              , count   :: Int
              , jRelief :: Double
-             } deriving (Show, Read)
+             } deriving (Show, Read, Eq)
 
 notchPair :: (TrailLike t, Vn t ~ V2 Double, Transformable t, Monoid t) =>
-             Joint -> Direction V2 Double -> t
-notchPair joint@(Joint {forward, depth, jRelief }) dir =
-   T.trace (show joint) mconcat $
-   [ fromOffsets [ forward *^ u
+             Joint -> Direction V2 Double -> Corners -> t
+notchPair Joint {forward, depth, jRelief } dir (Corners adj1 adj2)=
+   mconcat $
+   [ fromOffsets [ (forward - priorNotch) *^ u
                  , (depth - chordLength) *^ rotateBy 0.25 u]
    , cornerRelief
-   , fromOffsets [ (forward - 2 * chordLength) *^ u ]
-   , rotateBy 0.75 cornerRelief
-   , fromOffsets [ (depth - chordLength) *^ rotateBy 0.75 u ]
+   , fromOffsets [ (forward - (if adj2 then 1 else 2) * chordLength) *^ u ]
+   , if adj2 then mempty else rotateBy 0.75 cornerRelief
+   , if adj2 then mempty
+     else fromOffsets [ (depth - chordLength) *^ rotateBy 0.75 u ]
    ] where
      u = fromDirection dir
          -- The relief cut is a semicircle; at the (ideal)
@@ -188,19 +209,23 @@ notchPair joint@(Joint {forward, depth, jRelief }) dir =
          -- the right angle.
      r = jRelief / 2
      chordLength = if jRelief > 0 then r * sqrt 2 else 0
+     priorNotch = if adj1 then depth else 0
      -- jog = (jRelief * 0.5 * (sqrt 2 - 1)) *^ rotateBy 0.375 u
      cornerRelief = if jRelief > 0
                     then scale r $ arc (rotateBy 0.625 dir) (-0.5 @@ turn)
                     else mempty
-     --                then [ T.trace (show jog) jog, rotateBy 0.5 jog ]
-     --                else []
 
 -- | Direction is not part of Joint because the direction is in 2D,
 -- according to how the panel is drawn, not the 3D orientation of the
 -- assembled box.
 notchTrail :: (TrailLike t, Vn t ~ V2 Double, Transformable t, Monoid t) =>
-              Joint -> Direction V2 Double -> t
-notchTrail joint dir = mconcat $ replicate (count joint) (notchPair joint dir)
+              Joint -> PriorEdge -> Direction V2 Double -> t
+notchTrail joint prior dir = mconcat $
+  [ np (prior == Notched) False
+  , mconcat $ replicate (count joint - 2) (np False False)
+  , np False True
+  ] where
+    np a b = notchPair joint dir $ Corners a b
 
 reverse :: (Transformable t, V t ~ V2, Floating (N t)) => t -> t
 reverse = rotateBy 0.5
